@@ -10,7 +10,11 @@ PYTHON=${PYTHON:-python3}
 echo "==> 检查依赖..."
 if ! $PYTHON -c "import flask, akshare, requests" 2>/dev/null; then
   echo "    缺失依赖, 安装中..."
-  $PYTHON -m pip install --break-system-packages -q -r requirements.txt
+  PIP_FLAGS=""
+  if $PYTHON -m pip install --help 2>/dev/null | grep -q "break-system-packages"; then
+    PIP_FLAGS="--break-system-packages"
+  fi
+  $PYTHON -m pip install $PIP_FLAGS -q -r requirements.txt
 fi
 
 echo "==> 清理 $PORT 端口..."
