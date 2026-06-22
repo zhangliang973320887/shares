@@ -2,9 +2,9 @@
 valuation
 *.exe
 
-# 缓存
-cache/
-tools/
+# 运行时缓存 (仅顶层目录)
+/cache/
+/tools/
 
 # IDE
 .vscode/
