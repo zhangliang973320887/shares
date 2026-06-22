@@ -12,6 +12,78 @@ PORT=${PORT:-5000}
 HOST=${HOST:-127.0.0.1}
 BIN=${BIN:-./valuation}
 
+# 选项解析
+DAEMON=0
+ACTION=start
+LOG_FILE=${LOG_FILE:-app.log}
+PID_FILE=${PID_FILE:-app.pid}
+for arg in "$@"; do
+  case "$arg" in
+    -d|--daemon) DAEMON=1 ;;
+    stop)        ACTION=stop ;;
+    restart)     ACTION=restart ;;
+    status)      ACTION=status ;;
+    -h|--help)
+      cat <<USAGE
+用法: $0 [选项] [命令]
+
+选项:
+  -d, --daemon    后台运行 (nohup, 日志 → $LOG_FILE, pid → $PID_FILE)
+
+命令:
+  (无)            前台启动
+  stop            停止后台进程
+  restart         重启 (=stop + 前台/后台)
+  status          查看进程
+
+环境变量:
+  PORT=5000  HOST=127.0.0.1  LOG_FILE=app.log  PID_FILE=app.pid
+
+示例:
+  ./start.sh                       前台启动
+  ./start.sh -d                    后台启动
+  HOST=0.0.0.0 ./start.sh -d       后台+公网监听
+  ./start.sh stop                  停止后台
+  ./start.sh status                查看
+  ./start.sh restart -d            重启到后台
+USAGE
+      exit 0
+      ;;
+  esac
+done
+
+# stop/status 不需编译
+if [ "$ACTION" = "stop" ] || [ "$ACTION" = "status" ]; then
+  if [ -f "$PID_FILE" ]; then
+    PID=$(cat "$PID_FILE")
+    if kill -0 "$PID" 2>/dev/null; then
+      if [ "$ACTION" = "status" ]; then
+        echo "✓ 运行中, PID=$PID"
+        ps -p "$PID" -o pid,etime,cmd 2>/dev/null || true
+        exit 0
+      else
+        kill "$PID" && rm -f "$PID_FILE"
+        echo "✓ 已停 PID=$PID"
+        exit 0
+      fi
+    fi
+  fi
+  if [ "$ACTION" = "status" ]; then
+    echo "✗ 未运行"
+  else
+    echo "✗ 未发现 pid 文件 ($PID_FILE)"
+  fi
+  exit 0
+fi
+
+# restart: 先停后台
+if [ "$ACTION" = "restart" ] && [ -f "$PID_FILE" ]; then
+  PID=$(cat "$PID_FILE")
+  kill "$PID" 2>/dev/null || true
+  rm -f "$PID_FILE"
+  sleep 1
+fi
+
 # 判断是否需要重新编译: 缺二进制 / .go 比二进制新
 need_build=0
 if [ ! -x "$BIN" ]; then
@@ -72,6 +144,24 @@ if [ "$HOST" = "127.0.0.1" ]; then
 fi
 
 echo "==> 启动: http://$HOST:$PORT"
-echo "    Ctrl+C 退出"
-trap 'echo ""; echo "==> 停服"; exit 0' INT TERM
-PORT=$PORT HOST=$HOST exec "$BIN"
+
+if [ "$DAEMON" = "1" ]; then
+  PORT=$PORT HOST=$HOST nohup "$BIN" > "$LOG_FILE" 2>&1 &
+  echo $! > "$PID_FILE"
+  sleep 1
+  if kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    echo "✓ 后台运行 PID=$(cat $PID_FILE)"
+    echo "    日志: tail -f $LOG_FILE"
+    echo "    停服: $0 stop"
+    echo "    状态: $0 status"
+  else
+    echo "❌ 启动失败,看日志:"
+    tail -20 "$LOG_FILE"
+    rm -f "$PID_FILE"
+    exit 1
+  fi
+else
+  echo "    Ctrl+C 退出 (后台: $0 -d)"
+  trap 'echo ""; echo "==> 停服"; exit 0' INT TERM
+  PORT=$PORT HOST=$HOST exec "$BIN"
+fi
