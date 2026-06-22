@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>股价估值分析工具</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: #f5f7fa; margin: 0; padding: 24px; color: #222; }
+  .container { max-width: 1000px; margin: 0 auto; }
+  .card { background: #fff; border-radius: 10px; padding: 20px 24px;
+          box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 20px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .row-source { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: #555; margin-bottom: 4px; }
+  input, select { width: 100%; padding: 8px 10px; border: 1px solid #d0d7de;
+                  border-radius: 6px; font-size: 14px; background: #fff; }
+  .actions { margin-top: 16px; }
+  button { background: #2f80ed; color: #fff; border: none; padding: 10px 22px;
+           border-radius: 6px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #1f6fd6; }
+  button:disabled { background: #999 !important; cursor: not-allowed; opacity: 0.7; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 10px 12px; border-bottom: 1px solid #eee; text-align: left; }
+  th { background: #fafbfc; font-weight: 600; color: #444; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px;
+           font-size: 12px; font-weight: 600; }
+  .b-success { background: #d4edda; color: #155724; }
+  .b-warning { background: #fff3cd; color: #856404; }
+  .b-danger  { background: #f8d7da; color: #721c24; }
+  .b-secondary { background: #e9ecef; color: #495057; }
+  .summary { font-size: 18px; font-weight: 700; padding: 14px 18px;
+             border-radius: 8px; margin-bottom: 14px; }
+  .s-success { background: #d4edda; color: #155724; }
+  .s-warning { background: #fff3cd; color: #856404; }
+  .s-danger  { background: #f8d7da; color: #721c24; }
+  .s-secondary { background: #e9ecef; color: #495057; }
+  .hint { font-size: 12px; color: #888; margin-top: 8px; }
+  .source-hint { font-size: 12px; color: #2f80ed; margin-top: 6px; padding: 6px 10px;
+                 background: #eef5ff; border-radius: 4px; }
+  .notes { background: #fffbe6; border-left: 3px solid #f0ad4e;
+           padding: 10px 14px; margin-top: 12px; font-size: 13px; }
+  .error { background: #f8d7da; color: #721c24; padding: 12px;
+           border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+  .meta-box { background: #f6f8fa; padding: 10px 14px; border-radius: 6px;
+              font-size: 12px; color: #555; margin-bottom: 14px; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #ccc;
+             border-top-color: #2f80ed; border-radius: 50%; animation: spin 0.8s linear infinite;
+             vertical-align: middle; }
+  .spinner-lg { width: 36px; height: 36px; border-width: 3px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="container">
+  {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+
+  <div class="card">
+    <form method="POST" id="form">
+      <div class="row-source">
+        <div>
+          <label>数据源</label>
+          <select name="source" id="source">
+            {{range .Sources}}
+              <option value="{{.Key}}" {{if eq $.Form.Source .Key}}selected{{end}}>{{.Label}} [{{.Scope}}]</option>
+            {{end}}
+          </select>
+          <div class="source-hint" id="source-note">{{(index .SourcesMap .Form.Source).Note}}</div>
+        </div>
+        <div>
+          <label>所属行业</label>
+          <select name="industry" id="industry">
+            {{range .InitialIndustries}}
+              <option value="{{.}}" {{if eq $.Form.Industry .}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </div>
+      </div>
+
+      <div class="row-source">
+        <div style="position:relative;">
+          <label>股票代码 或 公司名称</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" name="code" id="code" value="{{.Form.Code}}"
+                   placeholder="如: 600036 / 招商银行 / 茅台" style="flex:1;" autocomplete="off">
+            <button type="button" id="fetch-btn" style="background:#28a745;white-space:nowrap;">📥 自动填充</button>
+          </div>
+          <div id="suggest-box" style="position:absolute;top:100%;left:0;right:0;background:#fff;
+               border:1px solid #d0d7de;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.1);
+               max-height:240px;overflow-y:auto;display:none;z-index:100;"></div>
+          <div id="lookup-msg" style="font-size:12px;color:#666;margin-top:4px;"></div>
+        </div>
+        <div>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" name="use_self_history" value="1" id="use-self"
+                   {{if .Form.Code}}checked{{end}} style="width:auto;">
+            <span>同时分析自身PE/PB 5年历史分位</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div><label>公司名称(可选)</label><input type="text" name="name" value="{{.Form.Name}}"></div>
+        <div><label>PE 市盈率</label><input type="number" step="0.01" name="pe" id="pe" value="{{.Form.PE}}"></div>
+        <div><label>PB 市净率</label><input type="number" step="0.01" name="pb" id="pb" value="{{.Form.PB}}"></div>
+        <div><label>ROE 净资产收益率 %</label><input type="number" step="0.01" name="roe" id="roe" value="{{.Form.ROE}}"></div>
+        <div><label>股息率 %</label><input type="number" step="0.01" name="div" value="{{.Form.Div}}"></div>
+        <div><label>PEG</label><input type="number" step="0.01" name="peg" id="peg" value="{{.Form.PEG}}"></div>
+      </div>
+      <div class="actions">
+        <button type="submit" id="submit-btn">开始分析</button>
+        <span id="submit-spinner" style="display:none;margin-left:12px;color:#666;font-size:13px;">
+          <span class="spinner"></span> 分析中,请稍候...
+        </span>
+      </div>
+    </form>
+
+    <div id="overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+         background:rgba(255,255,255,0.7);z-index:9999;align-items:center;justify-content:center;">
+      <div style="background:#fff;padding:24px 36px;border-radius:10px;
+           box-shadow:0 4px 20px rgba(0,0,0,.15);text-align:center;">
+        <div class="spinner spinner-lg"></div>
+        <div style="margin-top:14px;font-size:14px;color:#444;">分析中...</div>
+        <div id="overlay-detail" style="margin-top:6px;font-size:12px;color:#888;">拉取实时数据 / 研报 / 历史分位</div>
+      </div>
+    </div>
+  </div>
+
+  {{with .Result}}
+  <div class="card">
+    <div class="summary s-{{.Color}}">{{.Name}} ({{.Industry}}) — {{.Summary}}</div>
+
+    <div class="meta-box">
+      <strong>基准数据来源:</strong> {{.Meta.Source}}
+      &nbsp;|&nbsp; <strong>截止:</strong> {{.Meta.Asof}}
+      {{if .Meta.Note}}<br>{{.Meta.Note}}{{end}}
+    </div>
+
+    <table>
+      <thead><tr><th>指标</th><th>输入值</th><th>行业基准</th><th>判断</th></tr></thead>
+      <tbody>
+        {{range .Rows}}
+        <tr>
+          <td>{{.Name}}</td>
+          <td>{{if notnil .Value}}{{fmt2 (deref .Value)}}{{else}}-{{end}}</td>
+          <td>{{.BMText}}</td>
+          <td>
+            {{if notnili .Score}}
+              {{$s := derefi .Score}}
+              {{if eq $s -1}}<span class="badge b-success">{{.Verdict}}</span>
+              {{else if eq $s 1}}<span class="badge b-danger">{{.Verdict}}</span>
+              {{else}}<span class="badge b-warning">{{.Verdict}}</span>{{end}}
+            {{else}}
+              <span class="badge b-secondary">{{.Verdict}}</span>
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+
+    {{with .SelfHistory}}
+    <div class="summary s-{{.Color}}" style="font-size:15px;margin-top:14px;">
+      📈 自身历史: {{.Label}}
+      <div style="font-size:12px;font-weight:normal;margin-top:4px;">
+        PE 5年区间 {{.PERange}} | 合理带 {{.PEBand}}
+        {{if notnil .PBPercentile}} | PB分位 {{fmt2 (deref .PBPercentile)}}%{{end}}
+        | 截止 {{.Asof}}
+      </div>
+    </div>
+    {{end}}
+
+    {{with .Analyst}}
+    <div class="card" style="margin:14px 0 0;padding:14px 18px;background:#f6f8fa;">
+      <div style="font-weight:600;margin-bottom:8px;">🏦 机构研报 (近12月, 共{{.TotalReports}}份)</div>
+      {{if .RatingCount}}
+      <div style="font-size:13px;margin-bottom:8px;">
+        评级分布:
+        {{range $k, $v := .RatingCount}}
+          <span class="badge b-secondary" style="margin-right:6px;">{{$k}}: {{$v}}</span>
+        {{end}}
+      </div>
+      {{end}}
+      {{if gt .TargetAvg 0.0}}
+      <div style="font-size:14px;margin:8px 0;padding:10px;background:#fff;border-radius:6px;">
+        <strong>📍 目标价</strong> (共 {{.TargetCount}} 份给出明确目标价)<br>
+        均值: <strong>{{fmt2 .TargetAvg}}</strong> |
+        区间: {{fmt2 .TargetMin}} ~ {{fmt2 .TargetMax}}
+        {{if gt .Price 0.0}}
+          | 现价 {{fmt2 .Price}}
+          {{if notnil .UpsidePct}}
+            | 隐含
+            {{$u := deref .UpsidePct}}
+            {{if gt $u 0.0}}
+              <span style="color:#080;font-weight:600;">+{{fmt2 $u}}%</span>
+            {{else}}
+              <span style="color:#c00;font-weight:600;">{{fmt2 $u}}%</span>
+            {{end}}
+          {{end}}
+        {{end}}
+      </div>
+      <table style="font-size:12px;">
+        <thead><tr><th>日期</th><th>机构</th><th>评级</th><th>目标价</th><th>报告</th></tr></thead>
+        <tbody>
+          {{range .Targets}}
+          <tr>
+            <td>{{.Date}}</td>
+            <td>{{.Org}}</td>
+            <td><span class="badge b-secondary">{{.Rating}}</span></td>
+            <td><strong>{{fmt2 .Target}}</strong></td>
+            <td style="color:#666;">{{.Title}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <div style="font-size:13px;color:#888;">近12月研报中未发现明确目标价</div>
+      {{end}}
+    </div>
+    {{end}}
+
+    {{if .Notes}}
+    <div class="notes">
+      <strong>额外提示:</strong>
+      <ul>{{range .Notes}}<li>{{.}}</li>{{end}}</ul>
+    </div>
+    {{end}}
+
+    <div class="hint">评分: 区间内 0, 低估 -1, 高估 +1, ROE/股息率反向。综合 ≤-0.4 低估, ≥0.4 高估。</div>
+  </div>
+  {{end}}
+</div>
+
+<script>
+const SOURCE_NOTES = {
+{{range $i, $s := .Sources}}{{if $i}},{{end}}"{{$s.Key}}": "{{$s.Note}}"{{end}}
+};
+
+const sourceSel = document.getElementById('source');
+const industrySel = document.getElementById('industry');
+const noteDiv = document.getElementById('source-note');
+
+sourceSel.addEventListener('change', async () => {
+  const src = sourceSel.value;
+  noteDiv.textContent = SOURCE_NOTES[src];
+  industrySel.innerHTML = '<option>加载中...</option>';
+  try {
+    const r = await fetch('/industries?source=' + encodeURIComponent(src));
+    const data = await r.json();
+    industrySel.innerHTML = (data.industries || []).map(i => `<option value="${i}">${i}</option>`).join('');
+  } catch (e) { industrySel.innerHTML = '<option>加载失败</option>'; }
+});
+
+const fetchBtn = document.getElementById('fetch-btn');
+const codeInput = document.getElementById('code');
+const lookupMsg = document.getElementById('lookup-msg');
+const suggestBox = document.getElementById('suggest-box');
+
+let suggestTimer = null;
+codeInput.addEventListener('input', () => {
+  const q = codeInput.value.trim();
+  clearTimeout(suggestTimer);
+  if (!q) { suggestBox.style.display = 'none'; return; }
+  suggestTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/search?q=' + encodeURIComponent(q));
+      const data = await r.json();
+      const items = data.results || [];
+      if (!items.length) { suggestBox.style.display = 'none'; return; }
+      suggestBox.innerHTML = items.map(it =>
+        `<div class="suggest-item" data-code="${it.code}"
+              style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:13px;">
+          <span style="color:#2f80ed;font-weight:600;">${it.code}</span>
+          <span style="margin-left:10px;">${it.name}</span>
+        </div>`).join('');
+      suggestBox.style.display = 'block';
+      suggestBox.querySelectorAll('.suggest-item').forEach(el => {
+        el.addEventListener('mouseenter', () => el.style.background = '#f0f5ff');
+        el.addEventListener('mouseleave', () => el.style.background = '');
+        el.addEventListener('click', () => {
+          codeInput.value = el.dataset.code;
+          suggestBox.style.display = 'none';
+          fetchBtn.click();
+        });
+      });
+    } catch (e) {}
+  }, 200);
+});
+
+document.addEventListener('click', e => {
+  if (!suggestBox.contains(e.target) && e.target !== codeInput) suggestBox.style.display = 'none';
+});
+
+fetchBtn.addEventListener('click', async () => {
+  const code = codeInput.value.trim();
+  if (!code) return;
+  fetchBtn.disabled = true;
+  fetchBtn.textContent = '查询中...';
+  lookupMsg.textContent = '查询中,首次约5-10秒...';
+  lookupMsg.style.color = '#666';
+  try {
+    const r = await fetch('/lookup?code=' + encodeURIComponent(code));
+    const data = await r.json();
+    if (data.error) {
+      lookupMsg.textContent = '❌ ' + data.error;
+      lookupMsg.style.color = '#c00';
+      if (data.suggestions && data.suggestions.length) {
+        suggestBox.innerHTML = data.suggestions.map(it =>
+          `<div class="suggest-item" data-code="${it.code}"
+                style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:13px;">
+            <span style="color:#2f80ed;font-weight:600;">${it.code}</span>
+            <span style="margin-left:10px;">${it.name}</span>
+          </div>`).join('');
+        suggestBox.style.display = 'block';
+        suggestBox.querySelectorAll('.suggest-item').forEach(el => {
+          el.addEventListener('click', () => {
+            codeInput.value = el.dataset.code;
+            suggestBox.style.display = 'none';
+            fetchBtn.click();
+          });
+        });
+      }
+    } else {
+      if (data.pe) document.getElementById('pe').value = data.pe.toFixed(2);
+      if (data.pb) document.getElementById('pb').value = data.pb.toFixed(2);
+      if (data.peg) document.getElementById('peg').value = data.peg.toFixed(2);
+      if (data.roe) document.getElementById('roe').value = data.roe.toFixed(2);
+      if (data.name) document.querySelector('input[name="name"]').value = data.name;
+      document.getElementById('use-self').checked = true;
+
+      if (data.industry_csi) {
+        sourceSel.value = 'csindex';
+        noteDiv.textContent = SOURCE_NOTES['csindex'];
+        try {
+          const r2 = await fetch('/industries?source=csindex');
+          const d2 = await r2.json();
+          industrySel.innerHTML = (d2.industries || []).map(i =>
+            `<option value="${i}" ${i === data.industry_csi ? 'selected' : ''}>${i}</option>`).join('');
+        } catch (e) {}
+      }
+
+      let parts = [`✓ ${data.name || code}`];
+      if (data.price) parts.push(`现价${data.price}`);
+      if (data.industry_em) parts.push(`行业:${data.industry_em}`);
+      if (data.area) parts.push(data.area);
+      if (data.mkt_cap_yi) parts.push(`市值${data.mkt_cap_yi.toFixed(2)}亿`);
+      if (data.pe_percentile !== undefined && data.pe_percentile !== null) parts.push(`PE分位${data.pe_percentile}%`);
+      if (data.industry_csi) parts.push(`→匹配:${data.industry_csi}`);
+      if (data.roe_period) parts.push(`ROE@${data.roe_period}`);
+      if (data.asof_realtime) parts.push(`实时:${data.asof_realtime}`);
+      lookupMsg.innerHTML = parts.join(' &nbsp;|&nbsp; ');
+      lookupMsg.style.color = '#080';
+    }
+  } catch (e) {
+    lookupMsg.textContent = '❌ ' + e.message;
+    lookupMsg.style.color = '#c00';
+  } finally {
+    fetchBtn.disabled = false;
+    fetchBtn.textContent = '📥 自动填充';
+  }
+});
+
+const form = document.getElementById('form');
+const submitBtn = document.getElementById('submit-btn');
+const submitSpinner = document.getElementById('submit-spinner');
+const overlay = document.getElementById('overlay');
+const overlayDetail = document.getElementById('overlay-detail');
+
+form.addEventListener('submit', () => {
+  submitBtn.disabled = true;
+  submitBtn.textContent = '分析中...';
+  submitSpinner.style.display = 'inline';
+  overlay.style.display = 'flex';
+  const stages = [
+    '拉取实时行情 (腾讯)', '查询行业基准 (中证指数)',
+    '获取5年历史PE/PB分位', '抓取机构研报 + 目标价', '综合估值打分中...'
+  ];
+  let i = 0;
+  overlayDetail.textContent = stages[0];
+  setInterval(() => { i = (i + 1) % stages.length; overlayDetail.textContent = stages[i]; }, 1200);
+});
+</script>
+</body>
+</html>

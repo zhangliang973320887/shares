@@ -1,0 +1,33 @@
+{
+  "_meta": {
+    "source": "Damodaran NYU Stern (估算快照)",
+    "url": "https://pages.stern.nyu.edu/~adamodar/",
+    "asof": "2024-01 年度数据估算",
+    "note": "基于Damodaran年度行业平均数据估算,非自动同步"
+  },
+  "industries": {
+    "Banks (Money Center) 大型银行": {"pe": 12.0, "pb": 1.2, "roe": 11.0, "div": 3.0},
+    "Banks (Regional) 区域银行": {"pe": 11.0, "pb": 1.1, "roe": 10.0, "div": 3.5},
+    "Software (System) 系统软件": {"pe": 35.0, "pb": 8.0, "roe": 18.0, "div": 0.5},
+    "Software (Application) 应用软件": {"pe": 32.0, "pb": 7.0, "roe": 15.0, "div": 0.5},
+    "Semiconductor 半导体": {"pe": 40.0, "pb": 6.5, "roe": 18.0, "div": 0.8},
+    "Retail (General) 零售综合": {"pe": 22.0, "pb": 3.5, "roe": 15.0, "div": 1.5},
+    "Retail (Online) 电商零售": {"pe": 45.0, "pb": 7.0, "roe": 12.0, "div": 0.0},
+    "Auto & Truck 汽车": {"pe": 10.0, "pb": 1.5, "roe": 12.0, "div": 2.0},
+    "Healthcare Equipment 医疗器械": {"pe": 25.0, "pb": 4.0, "roe": 13.0, "div": 1.0},
+    "Drugs (Pharma) 制药": {"pe": 22.0, "pb": 4.5, "roe": 14.0, "div": 2.5},
+    "Biotech 生物科技": {"pe": 35.0, "pb": 5.0, "roe": 10.0, "div": 0.0},
+    "Oil & Gas (Integrated) 油气综合": {"pe": 12.0, "pb": 1.5, "roe": 14.0, "div": 4.0},
+    "Restaurant/Dining 餐饮": {"pe": 25.0, "pb": 5.5, "roe": 20.0, "div": 1.5},
+    "Telecom 电信": {"pe": 15.0, "pb": 1.8, "roe": 10.0, "div": 4.5},
+    "Utility (General) 公用事业": {"pe": 18.0, "pb": 2.0, "roe": 9.0, "div": 3.5},
+    "REIT 房地产信托": {"pe": 30.0, "pb": 2.0, "roe": 6.0, "div": 4.5},
+    "Aerospace/Defense 航空国防": {"pe": 22.0, "pb": 4.0, "roe": 15.0, "div": 1.5},
+    "Tech Hardware 科技硬件": {"pe": 28.0, "pb": 10.0, "roe": 25.0, "div": 0.5},
+    "Beverage (Soft) 饮料": {"pe": 25.0, "pb": 8.0, "roe": 30.0, "div": 2.5},
+    "Food Processing 食品加工": {"pe": 18.0, "pb": 3.5, "roe": 18.0, "div": 2.5},
+    "Insurance 保险": {"pe": 13.0, "pb": 1.5, "roe": 12.0, "div": 2.5},
+    "Chemical (Specialty) 特种化工": {"pe": 20.0, "pb": 3.5, "roe": 14.0, "div": 2.0},
+    "Steel 钢铁": {"pe": 9.0, "pb": 1.2, "roe": 12.0, "div": 2.5}
+  }
+}

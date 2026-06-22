@@ -1,0 +1,12 @@
+# 编译产物
+valuation
+*.exe
+
+# 缓存
+cache/
+tools/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
