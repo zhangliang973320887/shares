@@ -9,7 +9,7 @@ export GO111MODULE=on
 export GOPROXY=${GOPROXY:-https://goproxy.cn,direct}
 
 PORT=${PORT:-5000}
-HOST=${HOST:-127.0.0.1}
+HOST=${HOST:-0.0.0.0}
 BIN=${BIN:-./valuation}
 
 # 选项解析
@@ -139,8 +139,8 @@ if [ -n "$EXISTING" ]; then
   sleep 1
 fi
 
-if [ "$HOST" = "127.0.0.1" ]; then
-  echo "==> 只监听本机. 公网访问请用: HOST=0.0.0.0 ./start.sh"
+if [ "$HOST" = "0.0.0.0" ]; then
+  echo "==> 监听 0.0.0.0 (所有接口). 仅本机用: HOST=127.0.0.1 ./start.sh"
 fi
 
 echo "==> 启动: http://$HOST:$PORT"
