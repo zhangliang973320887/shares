@@ -2,6 +2,14 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f80ed">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="估值">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+<link rel="apple-touch-icon" href="/static/icon.svg">
 <title>股价估值分析工具</title>
 <style>
   * { box-sizing: border-box; }
@@ -49,11 +57,36 @@
              vertical-align: middle; }
   .spinner-lg { width: 36px; height: 36px; border-width: 3px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 移动响应式 */
+  @media (max-width: 768px) {
+    body { padding: 12px; }
+    .container { max-width: 100%; }
+    .card { padding: 14px 16px; border-radius: 8px; margin-bottom: 14px; }
+    .grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .row-source { grid-template-columns: 1fr; gap: 10px; }
+    input, select { font-size: 16px; padding: 10px; }
+    button { width: 100%; padding: 12px; font-size: 16px; }
+    .summary { font-size: 16px; padding: 12px; }
+    th, td { padding: 8px 6px; font-size: 12px; }
+    table { font-size: 12px; }
+    .meta-box { font-size: 11px; }
+    h1 { font-size: 18px; }
+  }
+  @media (max-width: 480px) {
+    .grid { grid-template-columns: 1fr; }
+    body { padding: 8px; }
+    .badge { font-size: 11px; padding: 2px 8px; }
+  }
 </style>
 </head>
 <body>
 <div class="container">
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+
+  <button id="install-btn" style="display:none;background:#28a745;margin-bottom:14px;">
+    📱 安装到桌面
+  </button>
 
   <div class="card">
     <form method="POST" id="form">
@@ -232,6 +265,34 @@
 </div>
 
 <script>
+// PWA: 注册 Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(e => console.log('SW reg fail', e));
+  });
+}
+
+// PWA: 安装提示
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('install-btn');
+  if (btn) btn.style.display = 'inline-block';
+});
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('install-btn');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') btn.style.display = 'none';
+      deferredPrompt = null;
+    });
+  }
+});
+
 const SOURCE_NOTES = {
 {{range $i, $s := .Sources}}{{if $i}},{{end}}"{{$s.Key}}": "{{$s.Note}}"{{end}}
 };

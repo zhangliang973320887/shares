@@ -61,6 +61,18 @@ func main() {
 		"notnili": func(p *int) bool { return p != nil },
 	})
 	r.LoadHTMLGlob("web/templates/*")
+	r.Static("/static", "./web/static")
+
+	// PWA: SW + manifest 走根路径
+	r.GET("/sw.js", func(ctx *gin.Context) {
+		ctx.Header("Service-Worker-Allowed", "/")
+		ctx.Header("Content-Type", "application/javascript")
+		ctx.File("./web/static/sw.js")
+	})
+	r.GET("/manifest.json", func(ctx *gin.Context) {
+		ctx.Header("Content-Type", "application/manifest+json")
+		ctx.File("./web/static/manifest.json")
+	})
 
 	indexHandler := func(ctx *gin.Context) {
 		_ = ctx.Request.ParseForm()
