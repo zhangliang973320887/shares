@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>股价估值分析工具</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: #f5f7fa; margin: 0; padding: 24px; color: #222; }
+  .container { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  .subtitle { color: #666; margin-bottom: 24px; font-size: 13px; }
+  .card { background: #fff; border-radius: 10px; padding: 20px 24px;
+          box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 20px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .row-source { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: #555; margin-bottom: 4px; }
+  input, select { width: 100%; padding: 8px 10px; border: 1px solid #d0d7de;
+                  border-radius: 6px; font-size: 14px; background: #fff; }
+  input:focus, select:focus { outline: none; border-color: #2f80ed; }
+  .actions { margin-top: 16px; }
+  button { background: #2f80ed; color: #fff; border: none; padding: 10px 22px;
+           border-radius: 6px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #1f6fd6; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 10px 12px; border-bottom: 1px solid #eee; text-align: left; }
+  th { background: #fafbfc; font-weight: 600; color: #444; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px;
+           font-size: 12px; font-weight: 600; }
+  .b-success { background: #d4edda; color: #155724; }
+  .b-warning { background: #fff3cd; color: #856404; }
+  .b-danger  { background: #f8d7da; color: #721c24; }
+  .b-secondary { background: #e9ecef; color: #495057; }
+  .summary { font-size: 18px; font-weight: 700; padding: 14px 18px;
+             border-radius: 8px; margin-bottom: 14px; }
+  .s-success { background: #d4edda; color: #155724; }
+  .s-warning { background: #fff3cd; color: #856404; }
+  .s-danger  { background: #f8d7da; color: #721c24; }
+  .s-secondary { background: #e9ecef; color: #495057; }
+  .hint { font-size: 12px; color: #888; margin-top: 8px; }
+  .source-hint { font-size: 12px; color: #2f80ed; margin-top: 6px; padding: 6px 10px;
+                 background: #eef5ff; border-radius: 4px; }
+  .notes { background: #fffbe6; border-left: 3px solid #f0ad4e;
+           padding: 10px 14px; margin-top: 12px; font-size: 13px; }
+  .error { background: #f8d7da; color: #721c24; padding: 12px;
+           border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+  .meta-box { background: #f6f8fa; padding: 10px 14px; border-radius: 6px;
+              font-size: 12px; color: #555; margin-bottom: 14px; }
+  .meta-box strong { color: #222; }
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid #ccc;
+             border-top-color:#2f80ed; border-radius:50%; animation: spin 0.8s linear infinite;
+             vertical-align:middle; }
+  .spinner-lg { width:36px; height:36px; border-width:3px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  button:disabled { background:#999 !important; cursor:not-allowed; opacity:0.7; }
+</style>
+</head>
+<body>
+<div class="container">
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+  <div class="card">
+    <form method="POST" id="form">
+      <div class="row-source">
+        <div>
+          <label>数据源</label>
+          <select name="source" id="source">
+            {% for key, info in sources.items() %}
+              <option value="{{ key }}" {% if form.source == key %}selected{% endif %}>
+                {{ info.label }} [{{ info.scope }}]
+              </option>
+            {% endfor %}
+          </select>
+          <div class="source-hint" id="source-note">
+            {{ sources[form.source].note }}
+          </div>
+        </div>
+        <div>
+          <label>所属行业</label>
+          <select name="industry" id="industry">
+            {% for ind in initial_industries %}
+              <option value="{{ ind }}" {% if form.industry == ind %}selected{% endif %}>{{ ind }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="row-source">
+        <div style="position:relative;">
+          <label>股票代码 或 公司名称 (输入后自动填充)</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" name="code" id="code" value="{{ form.code }}"
+                   placeholder="如: 600036 / 招商银行 / 茅台" style="flex:1;" autocomplete="off">
+            <button type="button" id="fetch-btn" style="background:#28a745;white-space:nowrap;">
+              📥 自动填充
+            </button>
+          </div>
+          <div id="suggest-box" style="position:absolute;top:100%;left:0;right:0;background:#fff;
+               border:1px solid #d0d7de;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.1);
+               max-height:240px;overflow-y:auto;display:none;z-index:100;"></div>
+          <div id="lookup-msg" style="font-size:12px;color:#666;margin-top:4px;"></div>
+        </div>
+        <div>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" name="use_self_history" value="1" id="use-self"
+                   {% if form.code %}checked{% endif %} style="width:auto;">
+            <span>同时分析自身PE/PB 5年历史分位(需股票代码)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div>
+          <label>公司名称(可选)</label>
+          <input type="text" name="name" value="{{ form.name }}" placeholder="如: 招商银行">
+        </div>
+        <div>
+          <label>PE 市盈率</label>
+          <input type="number" step="0.01" name="pe" id="pe" value="{{ form.pe }}" placeholder="如: 12.5">
+        </div>
+        <div>
+          <label>PB 市净率</label>
+          <input type="number" step="0.01" name="pb" id="pb" value="{{ form.pb }}" placeholder="如: 1.8">
+        </div>
+        <div>
+          <label>ROE 净资产收益率 %</label>
+          <input type="number" step="0.01" name="roe" id="roe" value="{{ form.roe }}" placeholder="如: 15.2">
+        </div>
+        <div>
+          <label>股息率 %</label>
+          <input type="number" step="0.01" name="div" value="{{ form.div }}" placeholder="如: 3.5">
+        </div>
+        <div>
+          <label>PEG</label>
+          <input type="number" step="0.01" name="peg" id="peg" value="{{ form.peg }}" placeholder="如: 1.2">
+        </div>
+      </div>
+      <div class="actions">
+        <button type="submit" id="submit-btn">开始分析</button>
+        <span id="submit-spinner" style="display:none;margin-left:12px;color:#666;font-size:13px;">
+          <span class="spinner"></span> 分析中,请稍候...
+        </span>
+      </div>
+    </form>
+
+    <div id="overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+         background:rgba(255,255,255,0.7);z-index:9999;align-items:center;justify-content:center;">
+      <div style="background:#fff;padding:24px 36px;border-radius:10px;
+           box-shadow:0 4px 20px rgba(0,0,0,.15);text-align:center;">
+        <div class="spinner spinner-lg"></div>
+        <div style="margin-top:14px;font-size:14px;color:#444;">分析中...</div>
+        <div id="overlay-detail" style="margin-top:6px;font-size:12px;color:#888;">
+          拉取实时数据 / 研报 / 历史分位
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if result %}
+  <div class="card">
+    <div class="summary s-{{ result.color }}">
+      {{ result.name }} ({{ result.industry }}) — {{ result.summary }}
+    </div>
+
+    {% if result.meta %}
+    <div class="meta-box">
+      <strong>基准数据来源:</strong> {{ result.meta.source }}
+      &nbsp;|&nbsp; <strong>截止:</strong> {{ result.meta.asof }}
+      {% if result.meta.note %}<br>{{ result.meta.note }}{% endif %}
+    </div>
+    {% endif %}
+
+    <table>
+      <thead>
+        <tr><th>指标</th><th>输入值</th><th>行业基准</th><th>判断</th></tr>
+      </thead>
+      <tbody>
+        {% for name, val, bm, verdict, score in result.rows %}
+        <tr>
+          <td>{{ name }}</td>
+          <td>{{ "%.2f"|format(val) if val is not none else "-" }}</td>
+          <td>{{ bm }}</td>
+          <td>
+            {% if score == -1 %}<span class="badge b-success">{{ verdict }}</span>
+            {% elif score == 1 %}<span class="badge b-danger">{{ verdict }}</span>
+            {% elif score == 0 %}<span class="badge b-warning">{{ verdict }}</span>
+            {% else %}<span class="badge b-secondary">{{ verdict }}</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if result.self_history %}
+    <div class="summary s-{{ result.self_history.color }}" style="font-size:15px;margin-top:14px;">
+      📈 自身历史: {{ result.self_history.label }}
+      <div style="font-size:12px;font-weight:normal;margin-top:4px;">
+        PE 5年区间 {{ result.self_history.pe_range }} | 合理带 {{ result.self_history.pe_band }}
+        {% if result.self_history.pb_percentile is not none %} | PB分位 {{ result.self_history.pb_percentile }}%{% endif %}
+        | 截止 {{ result.self_history.asof }}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if result.analyst %}
+    <div class="card" style="margin:14px 0 0;padding:14px 18px;background:#f6f8fa;">
+      <div style="font-weight:600;margin-bottom:8px;">
+        🏦 机构研报 (近12月, 共{{ result.analyst.total_reports }}份)
+      </div>
+      {% if result.analyst.rating_count %}
+      <div style="font-size:13px;margin-bottom:8px;">
+        评级分布:
+        {% for r, c in result.analyst.rating_count.items() %}
+          <span class="badge b-secondary" style="margin-right:6px;">{{ r }}: {{ c }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if result.analyst.target_avg %}
+      <div style="font-size:14px;margin:8px 0;padding:10px;background:#fff;border-radius:6px;">
+        <strong>📍 目标价</strong> (共 {{ result.analyst.target_count }} 份给出明确目标价)<br>
+        均值: <strong>{{ result.analyst.target_avg }}</strong> |
+        区间: {{ result.analyst.target_min }} ~ {{ result.analyst.target_max }}
+        {% if result.analyst.price %}
+          | 现价 {{ result.analyst.price }}
+          | 隐含
+          {% if result.analyst.upside_pct > 0 %}
+            <span style="color:#080;font-weight:600;">+{{ result.analyst.upside_pct }}%</span>
+          {% else %}
+            <span style="color:#c00;font-weight:600;">{{ result.analyst.upside_pct }}%</span>
+          {% endif %}
+        {% endif %}
+      </div>
+      <table style="font-size:12px;">
+        <thead><tr><th>日期</th><th>机构</th><th>评级</th><th>目标价</th><th>报告</th></tr></thead>
+        <tbody>
+          {% for t in result.analyst.targets %}
+          <tr>
+            <td>{{ t.date }}</td>
+            <td>{{ t.org }}</td>
+            <td><span class="badge b-secondary">{{ t.rating }}</span></td>
+            <td><strong>{{ t.target }}</strong></td>
+            <td style="color:#666;">{{ t.title }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="font-size:13px;color:#888;">近12月研报中未发现明确目标价 (大多数券商对A股不直接给目标价,只给评级)</div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if result.notes %}
+    <div class="notes">
+      <strong>额外提示:</strong>
+      <ul>{% for n in result.notes %}<li>{{ n }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    <div class="hint">
+      评分: 区间内 0, 低估 -1, 高估 +1, ROE/股息率反向。综合 ≤-0.4 低估, ≥0.4 高估。
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+const SOURCE_NOTES = {
+  {% for key, info in sources.items() %}"{{ key }}": "{{ info.note }}"{% if not loop.last %},{% endif %}
+  {% endfor %}
+};
+
+const sourceSel = document.getElementById('source');
+const industrySel = document.getElementById('industry');
+const noteDiv = document.getElementById('source-note');
+
+sourceSel.addEventListener('change', async () => {
+  const src = sourceSel.value;
+  noteDiv.textContent = SOURCE_NOTES[src];
+  industrySel.innerHTML = '<option>加载中...</option>';
+  try {
+    const r = await fetch('/industries?source=' + encodeURIComponent(src));
+    const data = await r.json();
+    industrySel.innerHTML = data.industries.map(i => `<option value="${i}">${i}</option>`).join('');
+  } catch (e) {
+    industrySel.innerHTML = '<option>加载失败</option>';
+  }
+});
+
+const fetchBtn = document.getElementById('fetch-btn');
+const codeInput = document.getElementById('code');
+const lookupMsg = document.getElementById('lookup-msg');
+const suggestBox = document.getElementById('suggest-box');
+
+let suggestTimer = null;
+codeInput.addEventListener('input', () => {
+  const q = codeInput.value.trim();
+  clearTimeout(suggestTimer);
+  if (!q || q.length < 1) { suggestBox.style.display = 'none'; return; }
+  suggestTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/search?q=' + encodeURIComponent(q));
+      const data = await r.json();
+      const items = data.results || [];
+      if (items.length === 0) { suggestBox.style.display = 'none'; return; }
+      suggestBox.innerHTML = items.map(it =>
+        `<div class="suggest-item" data-code="${it.code}" data-name="${it.name}"
+              style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:13px;">
+          <span style="color:#2f80ed;font-weight:600;">${it.code}</span>
+          <span style="margin-left:10px;">${it.name}</span>
+        </div>`
+      ).join('');
+      suggestBox.style.display = 'block';
+      suggestBox.querySelectorAll('.suggest-item').forEach(el => {
+        el.addEventListener('mouseenter', () => el.style.background = '#f0f5ff');
+        el.addEventListener('mouseleave', () => el.style.background = '');
+        el.addEventListener('click', () => {
+          codeInput.value = el.dataset.code;
+          suggestBox.style.display = 'none';
+          fetchBtn.click();
+        });
+      });
+    } catch (e) {}
+  }, 200);
+});
+
+document.addEventListener('click', e => {
+  if (!suggestBox.contains(e.target) && e.target !== codeInput) {
+    suggestBox.style.display = 'none';
+  }
+});
+
+const form = document.getElementById('form');
+const submitBtn = document.getElementById('submit-btn');
+const submitSpinner = document.getElementById('submit-spinner');
+const overlay = document.getElementById('overlay');
+const overlayDetail = document.getElementById('overlay-detail');
+
+form.addEventListener('submit', () => {
+  submitBtn.disabled = true;
+  submitBtn.textContent = '分析中...';
+  submitSpinner.style.display = 'inline';
+  overlay.style.display = 'flex';
+
+  const stages = [
+    '拉取实时行情 (腾讯)',
+    '查询行业基准 (中证指数)',
+    '获取5年历史PE/PB分位',
+    '抓取机构研报 + 目标价',
+    '综合估值打分中...'
+  ];
+  let i = 0;
+  overlayDetail.textContent = stages[0];
+  const tick = setInterval(() => {
+    i = (i + 1) % stages.length;
+    overlayDetail.textContent = stages[i];
+  }, 1200);
+
+  window.addEventListener('pagehide', () => clearInterval(tick));
+});
+
+fetchBtn.addEventListener('click', async () => {
+  const code = codeInput.value.trim();
+  if (!code) { lookupMsg.textContent = '请输入6位代码'; lookupMsg.style.color = '#c00'; return; }
+  fetchBtn.disabled = true;
+  fetchBtn.textContent = '查询中...';
+  lookupMsg.textContent = '查询中,首次约5-10秒...';
+  lookupMsg.style.color = '#666';
+  try {
+    const r = await fetch('/lookup?code=' + encodeURIComponent(code));
+    const data = await r.json();
+    if (data.error) {
+      lookupMsg.textContent = '❌ ' + data.error;
+      lookupMsg.style.color = '#c00';
+      if (data.suggestions && data.suggestions.length) {
+        suggestBox.innerHTML = data.suggestions.map(it =>
+          `<div class="suggest-item" data-code="${it.code}"
+                style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:13px;">
+            <span style="color:#2f80ed;font-weight:600;">${it.code}</span>
+            <span style="margin-left:10px;">${it.name}</span>
+          </div>`
+        ).join('');
+        suggestBox.style.display = 'block';
+        suggestBox.querySelectorAll('.suggest-item').forEach(el => {
+          el.addEventListener('mouseenter', () => el.style.background = '#f0f5ff');
+          el.addEventListener('mouseleave', () => el.style.background = '');
+          el.addEventListener('click', () => {
+            codeInput.value = el.dataset.code;
+            suggestBox.style.display = 'none';
+            fetchBtn.click();
+          });
+        });
+      }
+    } else {
+      if (data.pe) document.getElementById('pe').value = data.pe.toFixed(2);
+      if (data.pb) document.getElementById('pb').value = data.pb.toFixed(2);
+      if (data.peg) document.getElementById('peg').value = data.peg.toFixed(2);
+      if (data.roe) document.getElementById('roe').value = data.roe.toFixed(2);
+      if (data.name) {
+        const nameInput = document.querySelector('input[name="name"]');
+        if (nameInput) nameInput.value = data.name;
+      }
+      document.getElementById('use-self').checked = true;
+
+      // 自动切到中证指数源 + 选中匹配行业
+      if (data.industry_csi) {
+        sourceSel.value = 'csindex';
+        noteDiv.textContent = SOURCE_NOTES['csindex'];
+        try {
+          const r2 = await fetch('/industries?source=csindex');
+          const d2 = await r2.json();
+          industrySel.innerHTML = d2.industries
+            .map(i => `<option value="${i}" ${i === data.industry_csi ? 'selected' : ''}>${i}</option>`)
+            .join('');
+        } catch (e) {}
+      }
+
+      let parts = [`✓ ${data.name || code}`];
+      if (data.price) parts.push(`现价${data.price}`);
+      if (data.industry_em) parts.push(`行业:${data.industry_em}`);
+      if (data.area) parts.push(data.area);
+      if (data.mkt_cap_yi) parts.push(`市值${data.mkt_cap_yi}亿`);
+      if (data.pe_percentile !== undefined) parts.push(`PE分位${data.pe_percentile}%`);
+      if (data.industry_csi) parts.push(`→匹配行业:${data.industry_csi}`);
+      if (data.roe_period) parts.push(`ROE@${data.roe_period}`);
+      if (data.asof_realtime) parts.push(`实时:${data.asof_realtime}`);
+      lookupMsg.innerHTML = parts.join(' &nbsp;|&nbsp; ');
+      lookupMsg.style.color = '#080';
+    }
+  } catch (e) {
+    lookupMsg.textContent = '❌ 网络错误: ' + e.message;
+    lookupMsg.style.color = '#c00';
+  } finally {
+    fetchBtn.disabled = false;
+    fetchBtn.textContent = '📥 自动填充';
+  }
+});
+</script>
+</body>
+</html>

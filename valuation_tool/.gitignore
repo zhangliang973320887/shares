@@ -1,0 +1,14 @@
+# 缓存(实时数据/历史拉取)
+cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
