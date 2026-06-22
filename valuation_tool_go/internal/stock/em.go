@@ -299,6 +299,64 @@ type CodeName struct {
 	Name string `json:"name"`
 }
 
+// SearchAllMarkets 东财统一搜索: A股/美股/港股, 支持中英文
+type SearchHit struct {
+	Code    string `json:"code"`
+	Name    string `json:"name"`
+	Market  string `json:"market"`  // A股 / 美股 / 港股
+	QuoteID string `json:"quote_id"`
+}
+
+func SearchAllMarkets(query string, limit int) []SearchHit {
+	if query == "" {
+		return nil
+	}
+	u := fmt.Sprintf(
+		"http://searchapi.eastmoney.com/api/suggest/get?input=%s&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=%d",
+		url.QueryEscape(query), limit,
+	)
+	var raw struct {
+		QuotationCodeTable struct {
+			Data []struct {
+				Code             string `json:"Code"`
+				Name             string `json:"Name"`
+				Classify         string `json:"Classify"`
+				SecurityTypeName string `json:"SecurityTypeName"`
+				JYS              string `json:"JYS"`
+				QuoteID          string `json:"QuoteID"`
+			} `json:"Data"`
+		} `json:"QuotationCodeTable"`
+	}
+	if err := httpGetJSON(u, nil, &raw); err != nil {
+		return nil
+	}
+	out := make([]SearchHit, 0, limit)
+	for _, d := range raw.QuotationCodeTable.Data {
+		market := d.SecurityTypeName
+		switch d.Classify {
+		case "AStock":
+			market = "A股"
+		case "UsStock":
+			market = "美股"
+		case "HKStock":
+			market = "港股"
+		case "Index":
+			market = "指数"
+		}
+		// 只保留 A股/美股/港股
+		if d.Classify != "AStock" && d.Classify != "UsStock" && d.Classify != "HKStock" {
+			continue
+		}
+		out = append(out, SearchHit{
+			Code: d.Code, Name: d.Name, Market: market, QuoteID: d.QuoteID,
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
 func FetchAllACodeName() ([]CodeName, error) {
 	fs := "m:0+t:6,m:0+t:13,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048"
 	const pageSize = 500

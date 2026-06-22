@@ -54,11 +54,25 @@ func (s *SearchIndex) Search(q string, limit int) []CodeName {
 		return nil
 	}
 
-	// 大写字母 = 美股代码直接命中
+	// 大写字母全 ASCII = 美股代码直接命中
 	if IsUSTicker(q) {
 		return []CodeName{{Code: q, Name: q + " (美股)"}}
 	}
 
+	// 优先用东财统一搜索 (支持 中/英 + A股/美股/港股)
+	hits := SearchAllMarkets(q, limit)
+	if len(hits) > 0 {
+		out := make([]CodeName, 0, len(hits))
+		for _, h := range hits {
+			out = append(out, CodeName{
+				Code: h.Code,
+				Name: h.Name + " (" + h.Market + ")",
+			})
+		}
+		return out
+	}
+
+	// 兜底: 本地 A股 索引模糊匹配
 	s.load()
 	s.mu.RLock()
 	list := s.list
@@ -76,34 +90,16 @@ func (s *SearchIndex) Search(q string, limit int) []CodeName {
 		}
 		return out
 	}
-
-	// 中文名: A股索引模糊匹配
 	qNorm := strings.ReplaceAll(q, " ", "")
-	hasASCII := isMostlyASCII(qNorm)
-	if !hasASCII {
-		for _, x := range list {
-			if strings.Contains(strings.ReplaceAll(x.Name, " ", ""), qNorm) {
-				out = append(out, x)
-				if len(out) >= limit {
-					break
-				}
-			}
-		}
-		return out
-	}
-
-	// 英文名: 先A股(沪深B股有英文名罕见), 再Yahoo美股
 	for _, x := range list {
-		if strings.Contains(strings.ToLower(x.Name), strings.ToLower(q)) {
+		nameNorm := strings.ReplaceAll(x.Name, " ", "")
+		if strings.Contains(nameNorm, qNorm) ||
+			strings.Contains(strings.ToLower(nameNorm), strings.ToLower(qNorm)) {
 			out = append(out, x)
 			if len(out) >= limit {
 				break
 			}
 		}
-	}
-	if len(out) < limit {
-		usHits := SearchUS(q, limit-len(out))
-		out = append(out, usHits...)
 	}
 	return out
 }
@@ -120,14 +116,30 @@ func (s *SearchIndex) Resolve(q string) string {
 	if len(hits) == 1 {
 		return hits[0].Code
 	}
-	// 精确名称匹配
+	if len(hits) == 0 {
+		return ""
+	}
+	// 精确名称匹配 (去括号注释/空格)
 	qNorm := strings.ReplaceAll(q, " ", "")
 	for _, h := range hits {
-		if strings.ReplaceAll(h.Name, " ", "") == qNorm {
+		clean := cleanName(h.Name)
+		if clean == qNorm {
 			return h.Code
 		}
 	}
+	// 首个结果若主体名匹配 (即 cleanName 完全等于 q), 直接用
+	if cleanName(hits[0].Name) == qNorm {
+		return hits[0].Code
+	}
 	return ""
+}
+
+// cleanName 去掉名称里的 "(A股)" "(美股)" 等标注 + 空格
+func cleanName(s string) string {
+	if i := strings.Index(s, " ("); i > 0 {
+		s = s[:i]
+	}
+	return strings.ReplaceAll(s, " ", "")
 }
 
 func isMostlyASCII(s string) bool {
