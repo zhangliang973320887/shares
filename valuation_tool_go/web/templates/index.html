@@ -167,7 +167,11 @@
 
   {{with .Result}}
   <div class="card">
-    <div class="summary s-{{.Color}}">{{.Name}} ({{.Industry}}) — {{.Summary}}</div>
+    <div class="summary s-{{.Color}}">
+      {{.Name}} ({{.Industry}})
+      {{if .AutoLocked}}<span style="font-size:11px;font-weight:normal;background:#fff;color:#2f80ed;padding:2px 8px;border-radius:10px;margin-left:6px;">🔒 自动匹配</span>{{end}}
+      — {{.Summary}}
+    </div>
 
     <div class="meta-box">
       <strong>基准数据来源:</strong> {{.Meta.Source}}

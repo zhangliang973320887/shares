@@ -153,6 +153,7 @@ type resultView struct {
 	Meta        benchmark.Meta
 	SelfHistory *selfHistoryView
 	Analyst     *analystView
+	AutoLocked  bool
 }
 
 type selfHistoryView struct {
@@ -218,21 +219,24 @@ func renderIndex(ctx *gin.Context, reg *benchmark.Registry, c *cache.Cache, idx 
 	}
 
 	if ctx.Request.Method == "POST" {
-		bm, err := reg.Get(fd.Source, fd.Industry)
-		if err != nil {
-			data.Error = "无法获取基准: " + err.Error()
-			ctx.HTML(http.StatusOK, "index.html", data)
-			return
-		}
-
 		var stockInfo *stock.StockInfo
 		var analyst *analystView
 		var selfHist *selfHistoryView
-		if fd.Code != "" && get("use_self_history") == "1" {
+		autoLocked := false
+
+		// 先解析股票, 拿到行业自动锁定 source/industry
+		if fd.Code != "" {
 			resolved := idx.Resolve(fd.Code)
 			if resolved != "" {
 				fd.Code = resolved
-				stockInfo = stock.Lookup(resolved, c)
+				if get("use_self_history") == "1" || fd.Industry == "" {
+					stockInfo = stock.Lookup(resolved, c)
+					if stockInfo != nil && stockInfo.IndustryCSI != "" {
+						fd.Source = "csindex"
+						fd.Industry = stockInfo.IndustryCSI
+						autoLocked = true
+					}
+				}
 				if stockInfo != nil && stockInfo.Analyst != nil {
 					analyst = &analystView{
 						TotalReports: stockInfo.Analyst.TotalReports,
@@ -247,6 +251,13 @@ func renderIndex(ctx *gin.Context, reg *benchmark.Registry, c *cache.Cache, idx 
 					}
 				}
 			}
+		}
+
+		bm, err := reg.Get(fd.Source, fd.Industry)
+		if err != nil {
+			data.Error = "无法获取基准: " + err.Error()
+			ctx.HTML(http.StatusOK, "index.html", data)
+			return
 		}
 
 		pe := parsef(fd.PE)
@@ -291,7 +302,11 @@ func renderIndex(ctx *gin.Context, reg *benchmark.Registry, c *cache.Cache, idx 
 			Meta:        bm.Meta,
 			SelfHistory: selfHist,
 			Analyst:     analyst,
+			AutoLocked:  autoLocked,
 		}
+		// Form 同步, 让下次表单显示锁定值
+		data.Form = fd
+		data.InitialIndustries = reg.Industries(fd.Source)
 	}
 	ctx.HTML(http.StatusOK, "index.html", data)
 }

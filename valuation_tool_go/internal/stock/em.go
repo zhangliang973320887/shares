@@ -40,16 +40,56 @@ func httpGetJSON(u string, headers map[string]string, out interface{}) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// FetchEMIndustryHSF10 从东财个股F10公司概况页面取详细行业 (主接口, 稳定)
+// EM2016 字段例: "食品饮料-饮料-白酒"
+func FetchEMIndustryHSF10(code string) (*EMIndustry, error) {
+	prefix := "SH"
+	if !strings.HasPrefix(code, "6") && !strings.HasPrefix(code, "9") {
+		prefix = "SZ"
+	}
+	u := fmt.Sprintf("https://emweb.securities.eastmoney.com/PC_HSF10/CompanySurvey/PageAjax?code=%s%s", prefix, code)
+	var raw struct {
+		Jbzl []struct {
+			EM2016 string `json:"EM2016"`
+			Trade  string `json:"TRADE_MARKET"`
+		} `json:"jbzl"`
+	}
+	if err := httpGetJSON(u, nil, &raw); err != nil {
+		return nil, err
+	}
+	if len(raw.Jbzl) == 0 || raw.Jbzl[0].EM2016 == "" {
+		return nil, fmt.Errorf("no industry")
+	}
+	parts := strings.Split(raw.Jbzl[0].EM2016, "-")
+	leaf := parts[len(parts)-1]
+	return &EMIndustry{Industry: leaf, Area: ""}, nil
+}
+
 func FetchEMIndustry(code string) (*EMIndustry, error) {
+	// 优先用 F10 接口 (稳定), 失败回退 push2
+	if ind, err := FetchEMIndustryHSF10(code); err == nil && ind.Industry != "" {
+		return ind, nil
+	}
 	u := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/get?secid=%s&fields=f127,f128", emSecid(code))
+	headers := map[string]string{"Referer": "https://quote.eastmoney.com/"}
 	var resp struct {
 		Data struct {
 			F127 string `json:"f127"`
 			F128 string `json:"f128"`
 		} `json:"data"`
 	}
-	if err := httpGetJSON(u, map[string]string{"Referer": "https://quote.eastmoney.com/"}, &resp); err != nil {
-		return nil, err
+	// 3次重试 (push2 偶发掉线)
+	var lastErr error
+	for i := 0; i < 3; i++ {
+		if err := httpGetJSON(u, headers, &resp); err == nil && resp.Data.F127 != "" {
+			return &EMIndustry{Industry: resp.Data.F127, Area: resp.Data.F128}, nil
+		} else if err != nil {
+			lastErr = err
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	if lastErr != nil {
+		return nil, lastErr
 	}
 	return &EMIndustry{Industry: resp.Data.F127, Area: resp.Data.F128}, nil
 }
