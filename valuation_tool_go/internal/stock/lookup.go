@@ -121,9 +121,39 @@ func pAt(sorted []float64, p float64) float64 {
 	return sorted[idx]
 }
 
+func lookupUS(code string, c *cache.Cache) *StockInfo {
+	key := "stock_" + code
+	if c != nil {
+		var cached StockInfo
+		if c.Get(key, &cached) {
+			return &cached
+		}
+	}
+	info := &StockInfo{Code: code}
+	q, err := FetchTencent(code)
+	if err != nil {
+		return &StockInfo{Code: code, Warn: []string{fmt.Sprintf("美股查询失败: %v", err)}}
+	}
+	info.Name = q.Name
+	info.Price = q.Price
+	info.PE = q.PETTM
+	info.PB = q.PB
+	info.MktCapYi = q.MktCapYi
+	info.AsofRealtime = q.AsofRealtime
+	info.IndustryEM = "美股"
+	info.Warn = append(info.Warn, "美股: 暂无历史分位/ROE/机构目标价")
+	if c != nil {
+		c.Set(key, info)
+	}
+	return info
+}
+
 func Lookup(code string, c *cache.Cache) *StockInfo {
+	if IsUSTicker(strings.ToUpper(code)) {
+		return lookupUS(strings.ToUpper(code), c)
+	}
 	if len(code) != 6 || !isAllDigit(code) {
-		return &StockInfo{Code: code, Warn: []string{"请输入6位A股代码"}}
+		return &StockInfo{Code: code, Warn: []string{"无效代码 (A股6位数字 / 美股大写字母)"}}
 	}
 	key := "stock_" + code
 	if c != nil {

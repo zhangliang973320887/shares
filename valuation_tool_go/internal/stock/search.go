@@ -49,16 +49,24 @@ func (s *SearchIndex) load() {
 }
 
 func (s *SearchIndex) Search(q string, limit int) []CodeName {
-	s.load()
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if q == "" || s.list == nil {
+	q = strings.TrimSpace(q)
+	if q == "" {
 		return nil
 	}
-	q = strings.TrimSpace(q)
+
+	// 大写字母 = 美股代码直接命中
+	if IsUSTicker(q) {
+		return []CodeName{{Code: q, Name: q + " (美股)"}}
+	}
+
+	s.load()
+	s.mu.RLock()
+	list := s.list
+	s.mu.RUnlock()
+
 	out := make([]CodeName, 0, limit)
 	if isAllDigit(q) {
-		for _, x := range s.list {
+		for _, x := range list {
 			if strings.HasPrefix(x.Code, q) {
 				out = append(out, x)
 				if len(out) >= limit {
@@ -66,9 +74,14 @@ func (s *SearchIndex) Search(q string, limit int) []CodeName {
 				}
 			}
 		}
-	} else {
-		qNorm := strings.ReplaceAll(q, " ", "")
-		for _, x := range s.list {
+		return out
+	}
+
+	// 中文名: A股索引模糊匹配
+	qNorm := strings.ReplaceAll(q, " ", "")
+	hasASCII := isMostlyASCII(qNorm)
+	if !hasASCII {
+		for _, x := range list {
 			if strings.Contains(strings.ReplaceAll(x.Name, " ", ""), qNorm) {
 				out = append(out, x)
 				if len(out) >= limit {
@@ -76,6 +89,21 @@ func (s *SearchIndex) Search(q string, limit int) []CodeName {
 				}
 			}
 		}
+		return out
+	}
+
+	// 英文名: 先A股(沪深B股有英文名罕见), 再Yahoo美股
+	for _, x := range list {
+		if strings.Contains(strings.ToLower(x.Name), strings.ToLower(q)) {
+			out = append(out, x)
+			if len(out) >= limit {
+				break
+			}
+		}
+	}
+	if len(out) < limit {
+		usHits := SearchUS(q, limit-len(out))
+		out = append(out, usHits...)
 	}
 	return out
 }
@@ -84,6 +112,9 @@ func (s *SearchIndex) Resolve(q string) string {
 	q = strings.TrimSpace(q)
 	if isAllDigit(q) && len(q) == 6 {
 		return q
+	}
+	if IsUSTicker(strings.ToUpper(q)) {
+		return strings.ToUpper(q)
 	}
 	hits := s.Search(q, 50)
 	if len(hits) == 1 {
@@ -97,6 +128,19 @@ func (s *SearchIndex) Resolve(q string) string {
 		}
 	}
 	return ""
+}
+
+func isMostlyASCII(s string) bool {
+	if s == "" {
+		return true
+	}
+	ascii := 0
+	for _, r := range s {
+		if r < 128 {
+			ascii++
+		}
+	}
+	return ascii*2 > len([]rune(s))
 }
 
 func isAllDigit(s string) bool {

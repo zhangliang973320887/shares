@@ -30,8 +30,32 @@ func tencentPrefix(code string) string {
 	return "sz"
 }
 
+// IsUSTicker 判断是否为美股代码 (纯大写字母, 可含一个点, 1-6位)
+func IsUSTicker(s string) bool {
+	if len(s) < 1 || len(s) > 8 {
+		return false
+	}
+	dotSeen := false
+	for _, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			continue
+		}
+		if r == '.' && !dotSeen {
+			dotSeen = true
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func FetchTencent(code string) (*TencentQuote, error) {
-	url := fmt.Sprintf("http://qt.gtimg.cn/q=%s%s", tencentPrefix(code), code)
+	var url string
+	if IsUSTicker(code) {
+		url = fmt.Sprintf("http://qt.gtimg.cn/q=us%s", code)
+	} else {
+		url = fmt.Sprintf("http://qt.gtimg.cn/q=%s%s", tencentPrefix(code), code)
+	}
 	client := &http.Client{Timeout: 8 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -68,9 +92,14 @@ func FetchTencent(code string) (*TencentQuote, error) {
 	}
 
 	asof := ""
-	if len(parts) > 30 && len(parts[30]) >= 12 {
+	if len(parts) > 30 {
 		t := parts[30]
-		asof = fmt.Sprintf("%s-%s-%s %s:%s", t[0:4], t[4:6], t[6:8], t[8:10], t[10:12])
+		// 美股格式 "2026-06-18 16:00:02", 直接用; A股紧凑 "20260622102100"
+		if strings.Contains(t, "-") {
+			asof = t
+		} else if len(t) >= 12 {
+			asof = fmt.Sprintf("%s-%s-%s %s:%s", t[0:4], t[4:6], t[6:8], t[8:10], t[10:12])
+		}
 	}
 
 	q := &TencentQuote{
