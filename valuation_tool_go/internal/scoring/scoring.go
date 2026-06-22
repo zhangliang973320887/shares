@@ -28,6 +28,10 @@ func judgeBand(val *float64, low, high float64) (string, *int) {
 	if *val <= 0 {
 		return "数据异常(≤0,可能亏损)", nil
 	}
+	// 区间无效 (0/0) → 不评分
+	if low == 0 && high == 0 {
+		return "无基准数据", nil
+	}
 	s := 0
 	if *val < low {
 		s := -1

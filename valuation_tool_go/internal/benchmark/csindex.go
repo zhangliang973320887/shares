@@ -110,31 +110,28 @@ func (s CsindexSource) Get(industry string) (*Benchmark, error) {
 	if err != nil {
 		return nil, err
 	}
-	peLow := round2(d.PE * 0.75)
-	peHigh := round2(d.PE * 1.25)
-	pbHigh := round2(d.PE / 8)
-	if pbHigh < 1.5 {
-		pbHigh = 1.5
-	}
-	pbLow := round2(pbHigh * 0.5)
-	divMin := round2(d.Div * 0.7)
-	if divMin < 0.5 {
-		divMin = 0.5
+	// PE 带宽 ±35% (原 ±25% 过紧, 实际行业波动更大)
+	peLow := round2(d.PE * 0.65)
+	peHigh := round2(d.PE * 1.35)
+	// PB: 中证 xls 不提供, 设 0 让评分跳过
+	divMin := round2(d.Div * 0.6)
+	if divMin < 0.3 {
+		divMin = 0.3
 	}
 	return &Benchmark{
 		PELow:  peLow,
 		PEHigh: peHigh,
-		PBLow:  pbLow,
-		PBHigh: pbHigh,
-		ROEMin: 10,
+		PBLow:  0,
+		PBHigh: 0,
+		ROEMin: 8,
 		DivMin: divMin,
-		PEGMax: 1.3,
+		PEGMax: 1.5,
 		Meta: Meta{
 			Source:  "中证指数官网 (csindex.com.cn)",
 			Asof:    d.Date,
 			LivePE:  d.PE,
 			LiveDiv: d.Div,
-			Note:    fmt.Sprintf("行业指数当前PE=%.2f, 股息率=%.2f%%, 区间为当前值±25%%", d.PE, d.Div),
+			Note:    fmt.Sprintf("行业指数当前PE=%.2f, 股息率=%.2f%%, PE带宽±35%%。PB该源无数据,不评分。", d.PE, d.Div),
 		},
 	}, nil
 }
