@@ -64,9 +64,11 @@
     .container { max-width: 100%; }
     .card { padding: 14px 16px; border-radius: 8px; margin-bottom: 14px; }
     .grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-    .row-source { grid-template-columns: 1fr; gap: 10px; }
+    .row-source { grid-template-columns: 1fr; gap: 14px; }
     input, select { font-size: 16px; padding: 10px; }
-    button { width: 100%; padding: 12px; font-size: 16px; }
+    .actions button { width: 100%; padding: 12px; font-size: 16px; }
+    #install-btn { width: 100%; padding: 12px; font-size: 15px; }
+    #fetch-btn { padding: 10px 14px; font-size: 13px; flex-shrink: 0; }
     .summary { font-size: 16px; padding: 12px; }
     th, td { padding: 8px 6px; font-size: 12px; }
     table { font-size: 12px; }
@@ -77,6 +79,10 @@
     .grid { grid-template-columns: 1fr; }
     body { padding: 8px; }
     .badge { font-size: 11px; padding: 2px 8px; }
+    /* 代码输入框+按钮改成上下两行 */
+    .code-row { flex-direction: column !important; gap: 8px !important; }
+    .code-row input { width: 100% !important; }
+    .code-row #fetch-btn { width: 100%; padding: 10px; }
   }
 </style>
 </head>
@@ -113,9 +119,9 @@
       <div class="row-source">
         <div style="position:relative;">
           <label>股票代码 或 公司名称</label>
-          <div style="display:flex;gap:8px;">
+          <div class="code-row" style="display:flex;gap:8px;">
             <input type="text" name="code" id="code" value="{{.Form.Code}}"
-                   placeholder="如: 600036 / 招商银行 / 茅台" style="flex:1;" autocomplete="off">
+                   placeholder="如: 600036 / 招商银行 / 茅台" style="flex:1;min-width:0;" autocomplete="off">
             <button type="button" id="fetch-btn" style="background:#28a745;white-space:nowrap;">📥 自动填充</button>
           </div>
           <div id="suggest-box" style="position:absolute;top:100%;left:0;right:0;background:#fff;
