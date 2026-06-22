@@ -31,10 +31,22 @@ if [ "$need_build" = "1" ]; then
     echo "   方案2: 服务器装 Go: https://go.dev/dl/"
     exit 1
   fi
+  echo "==> Go 环境诊断:"
+  echo "    go version: $(go version)"
+  echo "    GOMOD: $(go env GOMOD)"
+  echo "    GO111MODULE: $(go env GO111MODULE)"
+  echo "    GOPATH: $(go env GOPATH)"
+  echo "    PWD: $(pwd)"
+  if [ "$(go env GOMOD)" = "/dev/null" ] || [ -z "$(go env GOMOD)" ]; then
+    echo "❌ Go 未在模块模式 (GOMOD 为空)"
+    echo "    可能原因: 当前目录在 GOPATH/src 之下,Go 用了 GOPATH 模式"
+    echo "    解决: 移出 GOPATH/src 或 export GOFLAGS='-mod=mod'"
+    exit 1
+  fi
   echo "==> go mod tidy..."
   go mod tidy
   echo "==> 编译..."
-  go build -o valuation .
+  go build -mod=mod -o valuation .
 else
   echo "==> 复用已有二进制 $BIN"
 fi
