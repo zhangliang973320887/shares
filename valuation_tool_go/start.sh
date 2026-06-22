@@ -4,6 +4,10 @@ set -e
 
 cd "$(dirname "$0")"
 
+# 强制 Go module 模式 (老 Go 默认 GOPATH 模式会找不到 internal 包)
+export GO111MODULE=on
+export GOPROXY=${GOPROXY:-https://goproxy.cn,direct}
+
 PORT=${PORT:-5000}
 HOST=${HOST:-127.0.0.1}
 BIN=${BIN:-./valuation}
